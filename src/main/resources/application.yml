@@ -1,0 +1,2 @@
+logging.level.io.foben: DEBUG
+kubernetes.client.namespace: default
