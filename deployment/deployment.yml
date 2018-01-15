@@ -1,0 +1,30 @@
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: configmap-operator
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        configmap-operator: main
+    spec:
+      containers:
+      - name: main
+        image: "foben/configmap-operator:local"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
