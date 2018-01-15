@@ -24,27 +24,58 @@ public class CMService {
 
     private KubernetesClient client = new DefaultKubernetesClient();
 
-    @Scheduled(fixedRate=3000)
+    @Scheduled(fixedRate=5000)
     public void checkRecords() {
+        LOGGER.debug("Analyzing deployments for changed ConfigMaps");
         DeploymentList deploymentList = client.extensions().deployments().inNamespace(namespace).list();
         for (Deployment deployment : deploymentList.getItems()) {
+            String deploymentName = deployment.getMetadata().getName();
+            LOGGER.debug("Searching for containers in deployment {}", deploymentName);
 
             PodSpec podSpec = deployment.getSpec().getTemplate().getSpec();
             if (podSpec == null) {
-                LOGGER.warn("Podspec for deployment {} is null", deployment.getMetadata().getName());
+                LOGGER.warn("Could not retrieve Podspec for deployment {}.", deploymentName);
                 continue;
-            } else {
-                LOGGER.trace("Searching for ConfigMap references in Deployment '{}'", deployment.getMetadata().getName());
             }
             Set<ConfigMapKeySelector> referencedConfigs = new HashSet<ConfigMapKeySelector>();
             for (Container container : podSpec.getContainers()) {
-                referencedConfigs.addAll(getEnvReferencedConfigMaps(container));
+                referencedConfigs.addAll(getConfigMapsReferencedInEnvVars(container));
             }
             for(ConfigMapKeySelector configMapRef : referencedConfigs) {
                 String annotation = getConfigMapAnnotation(configMapRef);
-                updateConfigMapRef(deployment.getMetadata().getName(), configMapRef.getName(), annotation);
+                updateConfigMapRef(deploymentName, configMapRef.getName(), annotation);
             }
         }
+    }
+
+    private Set<ConfigMapKeySelector> getConfigMapsReferencedInEnvVars(Container container) {
+        Set<ConfigMapKeySelector> result = new HashSet<ConfigMapKeySelector>();
+        LOGGER.debug("Searching for referenced ConfigMaps in container {}", container.getName());
+        for (EnvVar envVar : container.getEnv() ) {
+            EnvVarSource varSource = envVar.getValueFrom();
+            if (varSource == null) {
+                continue;
+            }
+            ConfigMapKeySelector configMapKeyRef = varSource.getConfigMapKeyRef();
+            if (configMapKeyRef != null) {
+                LOGGER.debug("Found reference to ConfigMap '{}' in container {}", configMapKeyRef.getName(), container.getName());
+                result.add(configMapKeyRef);
+            }
+
+        }
+        return result;
+    }
+
+    private String getConfigMapAnnotation(ConfigMapKeySelector configMapref) {
+        ConfigMap configMap = client.configMaps().inNamespace(namespace).withName(configMapref.getName()).get();
+        if (configMap == null) {
+            LOGGER.warn("Could not retrieve ConfigMap '{}'", configMapref.getName());
+            return null;
+        }
+        String resourceVersion = configMap.getMetadata().getResourceVersion();
+        LOGGER.debug("Resource Version for ConfigMap '{}' is '{}'",
+                configMapref.getName(), resourceVersion);
+        return resourceVersion;
     }
 
     private void updateConfigMapRef(String deploymentName, String configMapName, String configMapAnnotation) {
@@ -60,36 +91,6 @@ public class CMService {
                 .endTemplate()
                 .endSpec()
                 .done();
-    }
-
-    private String getConfigMapAnnotation(ConfigMapKeySelector configMapref) {
-        ConfigMap configMap = client.configMaps().inNamespace(namespace).withName(configMapref.getName()).get();
-        if (configMap == null) {
-            LOGGER.warn("Could not retrieve ConfigMap '{}'", configMapref.getName());
-            return null;
-        }
-        String resourceVersion = configMap.getMetadata().getResourceVersion();
-        LOGGER.info("Resource Version for ConfigMap '{}' is '{}'",
-                configMapref.getName(), resourceVersion);
-        return resourceVersion;
-    }
-
-    private Set<ConfigMapKeySelector> getEnvReferencedConfigMaps(Container container) {
-        Set<ConfigMapKeySelector> result = new HashSet<ConfigMapKeySelector>();
-        LOGGER.trace("Searching for referenced ConfigMaps in container {}", container.getName());
-        for (EnvVar envVar : container.getEnv() ) {
-            EnvVarSource varSource = envVar.getValueFrom();
-            if (varSource == null) {
-                continue;
-            }
-            ConfigMapKeySelector configMapKeyRef = varSource.getConfigMapKeyRef();
-            if (configMapKeyRef != null) {
-                LOGGER.debug("Found reference to ConfigMap '{}' in container {}", configMapKeyRef.getName(), container.getName());
-                result.add(configMapKeyRef);
-            }
-
-        }
-        return result;
     }
 
 }
