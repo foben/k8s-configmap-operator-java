@@ -48,6 +48,13 @@ public class CMService {
         }
     }
 
+    /**
+     * Retrieve the ConfigMaps that are referenced by environment variable injection
+     * in the given container
+     *
+     * @param container the container to analyze
+     * @return a Set of @{@link ConfigMapKeySelector}s representing the referenced ConfigMaps
+     */
     private Set<ConfigMapKeySelector> getConfigMapsReferencedInEnvVars(Container container) {
         Set<ConfigMapKeySelector> result = new HashSet<ConfigMapKeySelector>();
         LOGGER.debug("Searching for referenced ConfigMaps in container {}", container.getName());
@@ -66,6 +73,12 @@ public class CMService {
         return result;
     }
 
+    /**
+     * Generate an identifier for the given ConfigMap
+     *
+     * @param configMapref
+     * @return
+     */
     private String getConfigMapAnnotation(ConfigMapKeySelector configMapref) {
         ConfigMap configMap = client.configMaps().inNamespace(namespace).withName(configMapref.getName()).get();
         if (configMap == null) {
@@ -78,6 +91,13 @@ public class CMService {
         return resourceVersion;
     }
 
+    /**
+     * Update the deployment by adding a ConfigMap identifier to the annotions
+     *
+     * @param deploymentName
+     * @param configMapName
+     * @param configMapAnnotation
+     */
     private void updateConfigMapRef(String deploymentName, String configMapName, String configMapAnnotation) {
         String annotationName = "configmap-ref-" + configMapName;
         LOGGER.debug("Setting annotation '{}' of deployment '{}' to value '{}'",
